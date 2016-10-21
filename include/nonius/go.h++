@@ -57,16 +57,6 @@ namespace nonius {
         }
     };
 
-    template <typename Fun>
-    detail::CompleteType<detail::ResultOf<Fun()>> user_code(reporter& rep, Fun&& fun) {
-        try {
-            return detail::complete_invoke(std::forward<Fun>(fun));
-        } catch(...) {
-            rep.benchmark_failure(std::current_exception());
-            throw benchmark_user_error();
-        }
-    }
-
     inline std::vector<parameters> generate_params(param_configuration cfg) {
         auto params = global_param_registry().defaults().merged(cfg.map);
         if (!cfg.run) {
@@ -117,24 +107,22 @@ namespace nonius {
             rep.params_start(params);
             for (auto&& bench : benchmarks) {
                 rep.benchmark_start(bench.name);
+                try {
+                    auto plan = bench.template prepare<Clock>(cfg, params, env);
 
-                auto plan = user_code(rep, [&]{
-                    return bench.template prepare<Clock>(cfg, params, env);
-                });
+                    rep.measurement_start(plan);
+                    auto samples = plan.template run<Clock>(cfg, env);
+                    rep.measurement_complete(std::vector<fp_seconds>(samples.begin(), samples.end()));
 
-                rep.measurement_start(plan);
-                auto samples = user_code(rep, [&]{
-                    return plan.template run<Clock>(cfg, env);
-                });
-                rep.measurement_complete(std::vector<fp_seconds>(samples.begin(), samples.end()));
-
-                if(!cfg.no_analysis) {
-                    rep.analysis_start();
-                    auto analysis = detail::analyse(cfg, env, samples.begin(), samples.end());
-                    rep.analysis_complete(analysis);
+                    if(!cfg.no_analysis) {
+                        rep.analysis_start();
+                        auto analysis = detail::analyse(cfg, env, samples.begin(), samples.end());
+                        rep.analysis_complete(analysis);
+                    }
+                    rep.benchmark_complete();
+                } catch (...) {
+                    rep.benchmark_failure(std::current_exception());
                 }
-
-                rep.benchmark_complete();
             }
             rep.params_complete();
         }

@@ -39,6 +39,12 @@ namespace nonius {
         };
     } // namespace detail
 
+    struct skip_error : std::exception {
+        const char* what() const NONIUS_NOEXCEPT override {
+            return "benchmark was skipped";
+        }
+    };
+
     struct chronometer {
     public:
         template <typename Fun>
@@ -56,6 +62,8 @@ namespace nonius {
         auto param() const -> typename Tag::type {
             return params->get<Tag>();
         }
+
+        void skip() const { throw skip_error{}; }
 
     private:
         template <typename Fun>
